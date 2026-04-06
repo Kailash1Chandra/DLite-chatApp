@@ -13,6 +13,11 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Set Git identity
+        run: |
+              git config --global user.name "Auto Sync Bot"
+              git config --global user.email "autosync@github.com"
+
       - name: Add friend's fork as remote
         run: |
           git remote add friend https://github.com/PRASHANTthm7/DLite-chatApp.git
