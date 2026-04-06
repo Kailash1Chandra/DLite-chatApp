@@ -3,13 +3,13 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   getCurrentAuthSnapshot,
-  loginWithGoogleFirebase,
-  loginWithFirebase,
-  logoutFromFirebase,
-  registerWithFirebase,
+  loginWithGoogle as loginWithGoogleAuth,
+  loginWithAuth,
+  logoutFromAuth,
+  registerWithAuth,
   subscribeToAuthState
-} from '../services/firebaseAuth';
-import { initializeMyPresence } from '../services/firebaseChat';
+} from '../services/authClient';
+import { initializeMyPresence } from '../services/chatClient';
 
 const AuthContext = createContext(null);
 
@@ -48,25 +48,25 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (email, password) => {
-    const snapshot = await loginWithFirebase({ email, password });
+    const snapshot = await loginWithAuth({ email, password });
     setToken(snapshot.token);
     setUser(snapshot.user);
   };
 
   const loginWithGoogle = async () => {
-    const snapshot = await loginWithGoogleFirebase();
+    const snapshot = await loginWithGoogleAuth();
     setToken(snapshot.token);
     setUser(snapshot.user);
   };
 
   const register = async (username, email, password) => {
-    const snapshot = await registerWithFirebase({ username, email, password });
+    const snapshot = await registerWithAuth({ username, email, password });
     setToken(snapshot.token);
     setUser(snapshot.user);
   };
 
   const logout = async () => {
-    await logoutFromFirebase();
+    await logoutFromAuth();
     setToken(null);
     setUser(null);
   };

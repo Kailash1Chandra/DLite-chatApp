@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuthContext } from "@/context/AuthContext";
-import { getUserProfileById, searchUsersByUsername } from "@/services/firebaseChat";
+import { getUserProfileById, searchUsersByUsername } from "@/services/chatClient";
 import {
   acceptCall,
   clearIceCandidates,

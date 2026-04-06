@@ -8,7 +8,7 @@ import {
   sendVideoSignal,
   subscribeToRoomPresence,
   subscribeToVideoSignals
-} from '../services/firebaseVideo';
+} from '../services/videoClient';
 
 const ICE_SERVERS = {
   iceServers: [

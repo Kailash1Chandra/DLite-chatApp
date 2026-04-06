@@ -20,8 +20,8 @@ import {
   update
 } from 'firebase/database';
 import { deleteObject, getDownloadURL, ref as storageRef, uploadBytes } from 'firebase/storage';
-import { getFirebaseAuth, getFirebaseStorage, getRealtimeDb } from './firebaseClient';
-import { subscribeToAuthState } from './firebaseAuth';
+import { getAuthClient, getBlobStore, getRealtimeDb } from './appClient';
+import { subscribeToAuthState } from './authClient';
 
 function directThreadId(userA, userB) {
   return [userA, userB].sort().join('__');
@@ -223,7 +223,7 @@ export async function setUserProfilePhoto({ userId, file }) {
   if (file.size > 5 * 1024 * 1024) throw new Error('Photo must be ≤ 5MB.');
 
   const realtimeDb = getRealtimeDb();
-  const storage = getFirebaseStorage();
+  const storage = getBlobStore();
   const extension = sanitizeStorageExtension(file.name.includes('.') ? file.name.split('.').pop() : '');
   const photoRef = storageRef(storage, `userPhotos/${userId}/avatar${extension ? `.${extension}` : ''}`);
 
@@ -246,7 +246,7 @@ export async function setUserProfilePhoto({ userId, file }) {
 export async function clearUserProfilePhoto({ userId, photoURL }) {
   if (!userId) throw new Error('User ID is required.');
   const realtimeDb = getRealtimeDb();
-  const storage = getFirebaseStorage();
+  const storage = getBlobStore();
 
   if (photoURL && typeof photoURL === 'string') {
     try {
@@ -582,7 +582,7 @@ export function initializeMyPresence(userId) {
   const connectedListener = async (snap) => {
     if (snap.val() !== true) return;
 
-    const auth = getFirebaseAuth();
+    const auth = getAuthClient();
     const currentUser = auth?.currentUser;
     // Guard: only write if auth confirms this user is signed in.
     if (!currentUser || currentUser.uid !== userId) return;
@@ -959,7 +959,7 @@ export async function sendDirectMedia({ senderId, receiverId, file }) {
   const mediaType = isImage ? 'image' : isVideo ? 'video' : isAudio ? 'audio' : 'file';
 
   const realtimeDb = getRealtimeDb();
-  const storage = getFirebaseStorage();
+  const storage = getBlobStore();
   const threadId = directThreadId(senderId, receiverId);
   const now = Date.now();
   const node = push(ref(realtimeDb, `dmMessages/${threadId}`));
@@ -1454,7 +1454,7 @@ export async function setGroupPhoto({ groupId, actorId, file }) {
     throw new Error('Only group members can change group photo.');
   }
 
-  const storage = getFirebaseStorage();
+  const storage = getBlobStore();
   const extension = sanitizeStorageExtension(file.name.includes('.') ? file.name.split('.').pop() : '');
   const photoRef = storageRef(storage, `groupPhotos/${normalizedGroupId}/avatar${extension ? `.${extension}` : ''}`);
   // FIX: retry upload/download for transient Storage failures.

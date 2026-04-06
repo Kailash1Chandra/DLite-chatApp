@@ -31,7 +31,7 @@ import {
   pinDmMessage,
   unpinDmMessage,
   subscribePinnedDmMessages
-} from '../services/firebaseChat';
+} from '../services/chatClient';
 import { motion } from 'framer-motion';
 import {
   Loader2,

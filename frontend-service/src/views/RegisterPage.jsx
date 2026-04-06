@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { AppHeaderMenu } from '@/components/AppHeaderMenu';
 import { AuthCardBranding } from '@/components/AuthCardBranding';
 import { AuthPageBackground } from '@/components/AuthPageBackground';
-import { toAuthErrorMessage } from '@/lib/firebaseAuthErrors';
+import { toAuthErrorMessage } from '@/lib/authErrors';
 
 export default function RegisterPage() {
   const { register, loginWithGoogle, isAuthenticated, user, loading: authLoading, logout } = useAuth();

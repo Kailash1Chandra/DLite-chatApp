@@ -11,14 +11,14 @@ import {
   setDoc,
   updateDoc
 } from 'firebase/firestore';
-import { getFirestoreDb } from './firebaseClient';
+import { getDocDb } from './appClient';
 
 function roomDoc(roomId) {
-  return doc(getFirestoreDb(), 'videoRooms', roomId);
+  return doc(getDocDb(), 'videoRooms', roomId);
 }
 
 function signalsCollection(roomId) {
-  return collection(getFirestoreDb(), 'videoRooms', roomId, 'signals');
+  return collection(getDocDb(), 'videoRooms', roomId, 'signals');
 }
 
 export async function joinVideoRoom({ roomId, userId }) {

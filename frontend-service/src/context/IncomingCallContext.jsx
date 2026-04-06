@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
-import { getUserProfileById } from '@/services/firebaseChat';
+import { getUserProfileById } from '@/services/chatClient';
 import { listenForIncomingCall, rejectCall } from '@/lib/call';
 
 const IncomingCallContext = createContext(null);

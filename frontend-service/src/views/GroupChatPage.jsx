@@ -15,7 +15,7 @@ import {
   importGroupChatHistory,
   listUserGroups,
   markGroupThreadRead,
-  sendGroupMessage as sendFirebaseGroupMessage,
+  sendGroupMessage as sendChatGroupMessage,
   setGroupMemberRole,
   setGroupMuted,
   subscribeGroupMessages,
@@ -25,7 +25,7 @@ import {
   pinGroupMessage,
   unpinGroupMessage,
   subscribePinnedGroupMessages
-} from '../services/firebaseChat';
+} from '../services/chatClient';
 import { motion } from 'framer-motion';
 import { Download, Upload, BellOff, Camera, LogOut, MessageSquare, MoreVertical, Pin, PinOff, Search, Send, SmilePlus, Trash2, UserPlus, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -386,7 +386,7 @@ export default function GroupChatPage() {
     setGroupTyping({ groupId: groupId.trim(), userId: user.id, username: user.username || 'User', isTyping: false }).catch(() => undefined);
     if (groupTypingTimeoutRef.current) clearTimeout(groupTypingTimeoutRef.current);
     try {
-      await sendFirebaseGroupMessage({
+      await sendChatGroupMessage({
         groupId: groupId.trim(),
         senderId: user.id,
         message: message.trim()

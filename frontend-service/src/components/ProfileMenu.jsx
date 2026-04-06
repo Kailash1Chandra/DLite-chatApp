@@ -7,7 +7,7 @@ import { Camera, KeyRound, Pencil, Trash2, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { clearUserProfilePhoto, setUserProfilePhoto } from '@/services/firebaseChat';
+import { clearUserProfilePhoto, setUserProfilePhoto } from '@/services/chatClient';
 
 /**
  * Portals to document.body so modals are not clipped by app-shell overflow-hidden.

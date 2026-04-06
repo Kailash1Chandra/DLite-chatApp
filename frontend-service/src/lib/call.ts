@@ -11,7 +11,7 @@ import {
   remove,
   set,
 } from "firebase/database";
-import { getFirebaseAuth, getRealtimeDb } from "@/services/firebaseClient";
+import { getAuthClient, getRealtimeDb } from "@/services/appClient";
 import { AnswerPayload, IceCandidatePayload, OfferPayload } from "@/types/call";
 
 function userCallRef(userId: string) {
@@ -24,7 +24,7 @@ function log(message: string, payload?: unknown) {
 
 function getAuthUidSafe() {
   try {
-    return getFirebaseAuth()?.currentUser?.uid;
+    return getAuthClient()?.currentUser?.uid;
   } catch {
     return undefined;
   }
