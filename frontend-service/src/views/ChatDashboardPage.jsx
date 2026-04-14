@@ -1125,15 +1125,15 @@ export default function ChatDashboardPage() {
                         className={cn(
                           'relative max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm sm:max-w-[70%]',
                           mine
-                            ? 'rounded-br-md border border-amber-400/50 bg-gradient-to-br from-amber-500 to-amber-600 text-white shadow-amber-600/25'
-                            : 'rounded-bl-md border border-amber-200/80 bg-white text-amber-950 dark:border-navy-700/60 dark:bg-navy-950/80 dark:text-slate-50'
+                            ? 'rounded-br-md border border-emerald-200 bg-emerald-100 text-emerald-950 shadow-emerald-600/10 dark:border-emerald-500/25 dark:bg-emerald-500/15 dark:text-slate-50'
+                            : 'rounded-bl-md border border-yellow-200 bg-yellow-50 text-amber-950 shadow-amber-600/10 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-slate-50'
                         )}
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div
                             className={cn(
                               'truncate text-[11px] font-semibold tracking-wide',
-                              mine ? 'text-amber-100/95' : 'text-amber-600 dark:text-sky-400'
+                              mine ? 'text-emerald-700/90 dark:text-emerald-200/90' : 'text-amber-700/90 dark:text-amber-200/90'
                             )}
                           >
                             {senderLabel}
@@ -1143,10 +1143,10 @@ export default function ChatDashboardPage() {
                                 className={cn(
                                   'mt-0.5 text-[10px] font-semibold tracking-wide',
                                   m.readBy?.[peerKey]
-                                    ? 'text-emerald-100/95'
+                                    ? 'text-emerald-700/85 dark:text-emerald-200/85'
                                     : m.deliveredBy?.[peerKey]
-                                      ? 'text-sky-100/95'
-                                      : 'text-white/70'
+                                      ? 'text-emerald-700/70 dark:text-emerald-200/70'
+                                      : 'text-emerald-700/60 dark:text-emerald-200/60'
                                 )}
                               >
                                 {m.readBy?.[peerKey] ? 'Read' : m.deliveredBy?.[peerKey] ? 'Delivered' : 'Sent'}
@@ -1159,8 +1159,8 @@ export default function ChatDashboardPage() {
                               className={cn(
                                 'rounded-md p-1.5 transition',
                                 mine
-                                  ? 'text-amber-50/95 hover:bg-white/15 hover:text-white'
-                                  : 'text-amber-500 hover:bg-amber-100 dark:text-slate-400 dark:hover:bg-navy-800/60'
+                                  ? 'text-emerald-700/90 hover:bg-emerald-200/70 dark:text-emerald-200/90 dark:hover:bg-emerald-500/20'
+                                  : 'text-amber-700/90 hover:bg-yellow-100/80 dark:text-amber-200/90 dark:hover:bg-amber-500/15'
                               )}
                               onClick={() => setOpenMessageMenuId((prev) => (prev === m._id ? null : m._id))}
                               aria-label="Message actions"
@@ -1241,16 +1241,21 @@ export default function ChatDashboardPage() {
                             className={cn(
                               'mt-2 block rounded-xl border px-3 py-2 text-sm no-underline transition hover:brightness-[1.02]',
                               mine
-                                ? 'border-white/25 bg-white/10 text-white hover:bg-white/15'
-                                : 'border-amber-200/80 bg-white text-amber-950 hover:bg-amber-50 dark:border-navy-700/60 dark:bg-navy-950/70 dark:text-slate-50 dark:hover:bg-navy-900/60'
+                                ? 'border-emerald-200/80 bg-emerald-50 text-emerald-950 hover:bg-emerald-100 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-slate-50 dark:hover:bg-emerald-500/15'
+                                : 'border-yellow-200/80 bg-yellow-50 text-amber-950 hover:bg-yellow-100/70 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-slate-50 dark:hover:bg-amber-500/15'
                             )}
                           >
                             <div className="truncate font-semibold">{m.fileName || 'Download file'}</div>
-                            <div className={cn('mt-0.5 text-xs opacity-80', mine ? 'text-amber-100/90' : '')}>Open / download</div>
+                            <div className={cn('mt-0.5 text-xs opacity-80', mine ? 'text-emerald-700/80 dark:text-emerald-200/80' : '')}>Open / download</div>
                           </a>
                         ) : null}
                         {(m.content || m.isDeleted) ? (
-                          <p className={cn('mt-1 leading-relaxed', m.isDeleted ? 'italic opacity-80' : mine ? 'text-white' : 'text-amber-950 dark:text-slate-50')}>
+                          <p
+                            className={cn(
+                              'mt-1 leading-relaxed',
+                              m.isDeleted ? 'italic opacity-80' : mine ? 'text-emerald-950 dark:text-slate-50' : 'text-amber-950 dark:text-slate-50'
+                            )}
+                          >
                             {m.content}
                           </p>
                         ) : null}
