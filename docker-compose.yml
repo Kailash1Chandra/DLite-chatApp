@@ -1,59 +1,28 @@
 services:
-  turn:
-    image: coturn/coturn:4.6
-    working_dir: /tmp
-    command:
-      - -n
-      - --min-port=49160
-      - --max-port=49200
-      - --realm=${TURN_REALM:-dlite}
-      - --user=${TURN_USER:-dlite}:${TURN_PASSWORD:-dlite}
-      - --lt-cred-mech
-      - --fingerprint
-      - --no-multicast-peers
-      - --no-cli
-      - --no-tls
-      - --no-dtls
-      - --pidfile=/tmp/turnserver.pid
-    ports:
-      - "3478:3478/udp"
-      - "3478:3478/tcp"
-      - "49160-49200:49160-49200/udp"
-    restart: unless-stopped
-    networks:
-      - public
-    healthcheck:
-      test: ["CMD", "sh", "-lc", "turnserver -V >/dev/null 2>&1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
-  api-gateway:
+  core-backend:
     build:
-      context: ./D-Lite-api-gateway
-    env_file: ./D-Lite-api-gateway/.env
+      context: ./core-backend
     environment:
-      GATEWAY_PORT: ${GATEWAY_PORT:-4000}
-      AUTH_SERVICE_URL: http://auth-service:${AUTH_PORT:-4001}
-      CHAT_SERVICE_URL: http://chat-service:${CHAT_PORT:-4002}
-      CALL_SERVICE_URL: http://call-service:${CALL_PORT:-4003}
-      MEDIA_SERVICE_URL: http://media-service:${MEDIA_PORT:-4004}
-      GATEWAY_CORS_ORIGIN: ${GATEWAY_CORS_ORIGIN:-*}
+      PORT: ${CORE_PORT:-4000}
+      NODE_ENV: ${NODE_ENV:-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # Shared DB/auth config
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+      # Media
+      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-50}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      CLOUDINARY_FOLDER: ${CLOUDINARY_FOLDER:-d-lite/media}
     ports:
-      - "${GATEWAY_PORT:-4000}:4000"
-    depends_on:
-      auth-service:
-        condition: service_healthy
-      chat-service:
-        condition: service_healthy
-      call-service:
-        condition: service_healthy
-      media-service:
-        condition: service_healthy
+      - "${CORE_PORT:-4000}:4000"
     restart: unless-stopped
     networks:
       - public
-      - internal
     healthcheck:
       test:
         [
@@ -67,73 +36,22 @@ services:
       retries: 10
       start_period: 10s
 
-  auth-service:
+  realtime-service:
     build:
-      context: ./D-Lite-auth-service
-    env_file: ./D-Lite-auth-service/.env
+      context: ./realtime-service
     environment:
-      PORT: ${AUTH_PORT:-4001}
+      PORT: ${REALTIME_PORT:-4003}
       NODE_ENV: ${NODE_ENV:-production}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+    ports:
+      - "${REALTIME_PORT:-4003}:4003"
     restart: unless-stopped
     networks:
-      - internal
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:4001/health', timeout=2).read()",
-        ]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
-
-  chat-service:
-    build:
-      context: ./D-Lite-chat-service
-    env_file: ./D-Lite-chat-service/.env
-    environment:
-      PORT: ${CHAT_PORT:-4002}
-      NODE_ENV: ${NODE_ENV:-production}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-    restart: unless-stopped
-    networks:
-      - internal
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:4002/health', timeout=2).read()",
-        ]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
-
-  call-service:
-    build:
-      context: ./D-Lite-call-service
-    env_file: ./D-Lite-call-service/.env
-    environment:
-      PORT: ${CALL_PORT:-4003}
-      NODE_ENV: ${NODE_ENV:-production}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      JWT_SECRET: ${JWT_SECRET:-replace-with-strong-secret}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-10000}
-      RATE_LIMIT_MAX_MESSAGES: ${RATE_LIMIT_MAX_MESSAGES:-60}
-      CALL_SESSION_TTL_SECONDS: ${CALL_SESSION_TTL_SECONDS:-3600}
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - internal
+      - public
     healthcheck:
       test:
         [
@@ -147,103 +65,50 @@ services:
       retries: 10
       start_period: 10s
 
-  redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    networks:
-      - internal
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 3s
-      retries: 20
-      start_period: 5s
-
-  media-service:
+  worker-service:
     build:
-      context: ./D-Lite-media-service
-    env_file: ./D-Lite-media-service/.env
-    environment:
-      PORT: ${MEDIA_PORT:-4004}
-      NODE_ENV: ${NODE_ENV:-production}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      MAX_FILE_SIZE_MB: ${MAX_FILE_SIZE_MB:-50}
-      CLOUDINARY_FOLDER: ${CLOUDINARY_FOLDER:-d-lite/media}
-    restart: unless-stopped
-    networks:
-      - internal
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://localhost:4004/health', timeout=2).read()",
-        ]
-      interval: 10s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
-
-  backup-worker:
-    build:
-      context: ./D-Lite-backup-worker
-    env_file: ./D-Lite-backup-worker/.env
+      context: ./worker-service
     environment:
       NODE_ENV: ${NODE_ENV:-production}
-    depends_on:
-      mongo:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - internal
-
-  mongo:
-    image: mongo:7
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-300}
+      BACKUP_BATCH_SIZE: ${BACKUP_BATCH_SIZE:-500}
+      BACKUP_OUTPUT_DIR: /data
     volumes:
-      - mongo_data:/data/db
+      - worker_data:/data
     restart: unless-stopped
     networks:
-      - internal
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
+      - public
 
-  frontend:
+  frontend-service:
     build:
       context: ./frontend-service
       network: host
       args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://api-gateway:4000}
-        NEXT_PUBLIC_CHAT_SOCKET_URL: ${NEXT_PUBLIC_CHAT_SOCKET_URL:-http://chat-service:4002}
-        NEXT_PUBLIC_CALL_SOCKET_URL: ${NEXT_PUBLIC_CALL_SOCKET_URL:-http://call-service:4003}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://core-backend:4000}
+        NEXT_PUBLIC_CHAT_SOCKET_URL: ${NEXT_PUBLIC_CHAT_SOCKET_URL:-http://realtime-service:4003}
+        NEXT_PUBLIC_CALL_SOCKET_URL: ${NEXT_PUBLIC_CALL_SOCKET_URL:-http://realtime-service:4003}
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
         NEXT_PUBLIC_ICE_SERVERS_JSON: ${NEXT_PUBLIC_ICE_SERVERS_JSON:-[{"urls":["stun:stun.l.google.com:19302"]}]}
-    env_file: ./frontend-service/.env
     environment:
       NODE_ENV: ${NODE_ENV:-production}
     ports:
       - "3000:3000"
     depends_on:
-      api-gateway:
+      core-backend:
+        condition: service_healthy
+      realtime-service:
         condition: service_healthy
     restart: unless-stopped
     networks:
       - public
 
 volumes:
-  redis_data:
-  mongo_data:
+  worker_data:
 
 networks:
   public:
-  internal:
-    internal: true
+  
 

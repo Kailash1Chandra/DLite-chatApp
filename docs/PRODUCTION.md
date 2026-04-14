@@ -1,42 +1,36 @@
 ## Production checklist (Docker Compose)
 
-### 1) Set real secrets (per-service `.env`)
-- `D-Lite-auth-service/.env`
-  - Set **real** `SUPABASE_URL` + `SUPABASE_ANON_KEY`
-  - Set a strong `AUTH_JWT_SECRET` (even if using Supabase; required for fallback consistency)
-- `D-Lite-chat-service/.env`
-  - Set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (preferred) or `SUPABASE_ANON_KEY`
-  - Set `AUTH_JWT_SECRET` to match auth-service
-- `D-Lite-backup-worker/.env`
-  - Set `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
-  - Set `MONGODB_URI=mongodb://mongo:27017` (default in compose)
-- `D-Lite-media-service/.env` (optional)
-  - Set Cloudinary credentials
+### 1) Set real secrets (root `.env`)
+- Set **real** Supabase config:
+  - `SUPABASE_URL`
+  - `SUPABASE_ANON_KEY`
+  - `SUPABASE_SERVICE_ROLE_KEY` (needed for backups / message writes)
+- Set local auth fallback secret (recommended):
+  - `AUTH_JWT_SECRET` (keep consistent across services)
+- Optional (media uploads):
+  - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
 
 ### 2) Only expose public ports
 Default `docker-compose.yml` exposes:
-- `frontend` on `3000`
-- `api-gateway` on `4000`
+- `frontend-service` on `3000`
+- `core-backend` on `4000`
+- `realtime-service` on `4003`
 
-Mongo/Redis and internal services are on an **internal network** (not published).
-
-### 3) Run
+### 3) Run (recommended production overlay)
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker compose ps
 ```
 
 ### 4) Health checks
 ```bash
 curl -fsS http://localhost:4000/health
-curl -fsS http://localhost:4000/auth/health
-curl -fsS http://localhost:4000/chat/health
-curl -fsS http://localhost:4000/call/health
-curl -fsS http://localhost:4000/media/health
+curl -fsS http://localhost:4003/health
 ```
 
 ### 5) Put behind a reverse proxy (recommended)
 Expose only 80/443 externally via Nginx/Caddy and route:
-- `api.example.com` → `api-gateway:4000`
-- `app.example.com` → `frontend:3000`
+- `api.example.com` → `core-backend:4000`
+- `ws.example.com` → `realtime-service:4003`
+- `app.example.com` → `frontend-service:3000`
 

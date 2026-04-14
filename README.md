@@ -1,30 +1,29 @@
 # D-LITE
 
-D-LITE is a real-time chat + calling app built as a **microservices stack** with a single API Gateway entry point and a modern Next.js frontend.
+D-LITE is a real-time chat + calling app refactored into a **simplified 4-service architecture** with a modern Next.js frontend.
 
 This repository contains:
 
-- **Frontend**: Next.js web app (UI + internal API routes for link preview / message backup).
-- **API Gateway**: single entry point that proxies requests to microservices.
-- **Microservices**: auth, chat, call signaling, media uploads.
-- **Workers**: backup worker that syncs chat messages into MongoDB (optional).
+- **frontend-service**: Next.js web app (UI + internal API routes for link preview / message backup).
+- **core-backend**: merged REST backend for auth + chat reads + media uploads.
+- **realtime-service**: Socket.IO service for chat realtime + WebRTC signaling.
+- **worker-service**: background backup jobs (optional).
 - **Database assets**: reference SQL schema and docs.
 
 ## Features
 
 - **Authentication**
-  - Backend auth-service uses **Supabase Auth** (primary) with `/me`.
-  - If Supabase is unreachable in local setups, auth-service can fall back to locally-issued JWTs (dev-friendly).
+  - `core-backend` uses **Supabase Auth** (primary) with `/auth/me`.
+  - If Supabase is unreachable in local setups, it can fall back to locally-issued JWTs (dev-friendly).
 - **Direct & group chat**
-  - Chat service provides REST reads and Socket.IO realtime events.
+  - `core-backend` provides REST reads and `realtime-service` provides Socket.IO realtime events.
   - When configured, messages are persisted in Supabase Postgres (`messages` table).
 - **Calls**
-  - WebRTC signaling via Socket.IO (call-service).
+  - WebRTC signaling via Socket.IO (`realtime-service`).
 - **Media**
-  - Media service uploads to Cloudinary (optional; runs in degraded mode when not configured).
+  - Media uploads to Cloudinary via `core-backend` (optional; runs in degraded mode when not configured).
 - **Backups**
-  - Frontend writes message-backup documents to MongoDB (optional).
-  - Backup worker can sync Supabase messages into MongoDB (optional).
+  - `worker-service` can sync Supabase messages into a JSONL backup volume (optional).
 
 ## Architecture (high level)
 
@@ -33,39 +32,29 @@ Browser (Next.js)
   ├─ UI routes (/login, /dashboard, /groups, /call, /webrtc-call, /video-call)
   ├─ Internal API routes:
   │    ├─ /api/link-preview
-  │    └─ /api/message-backup  -> MongoDB (optional)
-  └─ API calls -> API Gateway (port 4000)
-                 ├─ /auth  -> auth-service   (port 4001)
-                 ├─ /chat  -> chat-service   (port 4002)
-                 ├─ /call  -> call-service   (port 4003) [Socket.IO]
-                 └─ /media -> media-service  (port 4004)
+  │    └─ /api/message-backup
+  ├─ REST API -> core-backend (port 4000)
+  │              ├─ /auth/*
+  │              ├─ /chat/*
+  │              └─ /media/*
+  └─ WebSockets (Socket.IO) -> realtime-service (port 4003)
+                 ├─ chat events
+                 └─ call signaling events
 ```
 
 ## Services & ports
 
-- **Frontend (Next.js)**: `http://localhost:3000`
-- **API Gateway**: `http://localhost:4000`
-- **Auth service**: `http://localhost:4001`
-- **Chat service**: `http://localhost:4002`
-- **Call service**: `http://localhost:4003`
-- **Media service**: `http://localhost:4004`
-
-The gateway proxies:
-
-- `/auth/*` → auth-service
-- `/chat/*` → chat-service
-- `/call/*` → call-service
-- `/media/*` → media-service
+- **frontend-service (Next.js)**: `http://localhost:3000`
+- **core-backend (REST)**: `http://localhost:4000`
+- **realtime-service (Socket.IO)**: `http://localhost:4003`
+- **worker-service (jobs)**: no HTTP port (writes backups to a volume)
 
 ## Repo structure
 
 ```text
-D-Lite-api-gateway/       # Gateway proxy (FastAPI)
-D-Lite-auth-service/      # Auth REST (FastAPI + Supabase)
-D-Lite-chat-service/      # Chat REST + Socket.IO (FastAPI/ASGI)
-D-Lite-call-service/      # WebRTC signaling (Socket.IO / ASGI)
-D-Lite-media-service/     # Media upload service (FastAPI + Cloudinary optional)
-D-Lite-backup-worker/     # Backup worker (Python, optional)
+core-backend/            # Auth + chat reads + media (FastAPI)
+realtime-service/        # Chat realtime + call signaling (Socket.IO / ASGI)
+worker-service/          # Backup worker (Python, optional)
 frontend-service/         # Next.js frontend
 database/                 # Reference schema/docs
 docker-compose.yml        # Full stack (Docker)
@@ -74,29 +63,20 @@ docker-compose.yml        # Full stack (Docker)
 
 ## Environment
 
-This repo uses **per-service env files** (recommended). Each service folder has:
-- `.env.example` (safe to commit)
-- `.env` (secrets; keep private)
+Configuration is now unified via root `.env` (see `.env.example`).
 
 ### Required for full functionality
 
-- **Supabase (auth/chat)**
-  - `D-Lite-auth-service/.env`: `SUPABASE_URL`, `SUPABASE_ANON_KEY`
-  - `D-Lite-chat-service/.env`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (preferred) or `SUPABASE_ANON_KEY`
-  - `D-Lite-backup-worker/.env`: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-- **MongoDB (backup)**
-  - `D-Lite-backup-worker/.env`: `MONGODB_URI`
+- **Supabase (auth/chat storage/backups)**
+  - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` (for backups)
 
 ### Optional
 
-- **Cloudinary (media uploads)**
-  - `D-Lite-media-service/.env`: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
+- **Cloudinary (media uploads)**: `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
 
-- **Local auth fallback consistency**
-  - `D-Lite-auth-service/.env`: `AUTH_JWT_SECRET`
-  - `D-Lite-chat-service/.env`: `AUTH_JWT_SECRET` (must match auth-service)
+- **Local auth fallback consistency**: set `AUTH_JWT_SECRET` (and keep it consistent across services)
 
-If you don’t set optional values, services still start but the related features respond with `503` until configured.
+If you don’t set optional values, services still start but related features may respond with `503` until configured.
 
 ## Run locally (without Docker)
 
@@ -115,9 +95,13 @@ docker compose up --build
 ```
 
 ### Production notes (recommended)
-- **Only expose** `frontend` (`3000`) and `api-gateway` (`4000`) publicly; internal services stay on an internal network.
-- `mongo` and `redis` are **not published** to the host in `docker-compose.yml` (production-safe default).
+- **Only expose** `frontend-service` (`3000`), `core-backend` (`4000`), and `realtime-service` (`4003`) publicly.
 - Services include **healthchecks** and `depends_on: condition: service_healthy` for safer startup ordering.
+- For production settings (stricter CORS + Socket.IO origins + tuned workers):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
 
 See `docs/PRODUCTION.md` for a full checklist.
 
@@ -140,7 +124,7 @@ Then retry:
 docker compose up --build
 ```
 
-## API reference (gateway)
+## API reference
 
 ### Auth
 
@@ -174,19 +158,15 @@ Events:
 ```bash
 curl -sS http://localhost:3000/health
 curl -sS http://localhost:4000/health
-curl -sS http://localhost:4000/auth/health
-curl -sS http://localhost:4000/chat/health
-curl -sS http://localhost:4000/call/health
-curl -sS http://localhost:4000/media/health
+curl -sS http://localhost:4000/auth/me
+curl -sS http://localhost:4003/health
 ```
 
 ## Troubleshooting
 
-- **Gateway can’t reach a service**
-  - Check the service port is running and `AUTH_SERVICE_URL` / `CHAT_SERVICE_URL` / `CALL_SERVICE_URL` / `MEDIA_SERVICE_URL` are correct.
 - **Auth/Chat returns 503**
-  - Set Supabase env vars in the service `.env` files and restart.
+  - Set Supabase env vars in root `.env` and restart.
 - **Media returns 503**
-  - Set Cloudinary env vars in `D-Lite-media-service/.env` and restart.
+  - Set Cloudinary env vars in root `.env` and restart.
 - **Backup disabled**
-  - Set `SUPABASE_SERVICE_ROLE_KEY` + `MONGODB_URI` in `D-Lite-backup-worker/.env` and restart worker.
+  - Set `SUPABASE_SERVICE_ROLE_KEY` in root `.env` and restart `worker-service`.

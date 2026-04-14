@@ -1,6 +1,0 @@
-node_modules/
-dist/
-.env
-# keep .env.example committed
-!.env.example
-*.log
