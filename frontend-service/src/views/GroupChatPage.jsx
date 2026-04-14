@@ -969,16 +969,16 @@ export default function GroupChatPage() {
                       className={cn(
                         'w-full max-w-[85%] rounded-xl border px-3 py-2 text-sm sm:max-w-[72%]',
                         mine
-                          ? 'border-amber-400/50 bg-gradient-to-br from-amber-500 to-amber-600 text-white'
-                          : 'border-slate-200 bg-slate-50 text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-slate-100'
+                          ? 'border-emerald-200 bg-emerald-100 text-emerald-950 dark:border-emerald-500/25 dark:bg-emerald-500/15 dark:text-slate-50'
+                          : 'border-yellow-200 bg-yellow-50 text-amber-950 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-slate-50'
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className={cn('text-xs font-medium', mine ? 'text-amber-100/90' : 'text-slate-600 dark:text-slate-300')}>
+                        <div className={cn('text-xs font-medium', mine ? 'text-emerald-700/85 dark:text-emerald-200/85' : 'text-amber-700/85 dark:text-amber-200/85')}>
                           {senderName}
                           {isPinned && <Pin className="ml-1 inline h-2.5 w-2.5 opacity-70" />}
                           {mine && memberCount > 1 && (
-                            <div className="mt-0.5 text-[10px] font-semibold tracking-wide text-amber-100/80">
+                            <div className="mt-0.5 text-[10px] font-semibold tracking-wide text-emerald-700/70 dark:text-emerald-200/70">
                               {readCount > 0 ? `Read by ${readCount}/${memberCount - 1}` : 'Sent'}
                             </div>
                           )}
@@ -987,7 +987,12 @@ export default function GroupChatPage() {
                           {(mine || isGroupAdmin) && (
                             <button
                               type="button"
-                              className={cn('rounded-md p-1 transition', mine ? 'text-amber-100 hover:bg-white/15' : 'text-slate-500 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10')}
+                              className={cn(
+                                'rounded-md p-1 transition',
+                                mine
+                                  ? 'text-emerald-700/90 hover:bg-emerald-200/70 dark:text-emerald-200/90 dark:hover:bg-emerald-500/20'
+                                  : 'text-amber-700/90 hover:bg-yellow-100/80 dark:text-amber-200/90 dark:hover:bg-amber-500/15'
+                              )}
                               onClick={() => isPinned ? handleUnpinGroupMessage(m._id) : handlePinGroupMessage(m)}
                               title={isPinned ? 'Unpin' : 'Pin'}
                             >
@@ -997,7 +1002,10 @@ export default function GroupChatPage() {
                           {mine && (
                             <button
                               type="button"
-                              className={cn('rounded-md p-1 transition', mine ? 'text-amber-100 hover:bg-white/15 hover:text-white' : 'text-slate-500 hover:bg-slate-200 dark:text-slate-300 dark:hover:bg-white/10')}
+                              className={cn(
+                                'rounded-md p-1 transition',
+                                'text-emerald-700/90 hover:bg-emerald-200/70 dark:text-emerald-200/90 dark:hover:bg-emerald-500/20'
+                              )}
                               onClick={() => handleDeleteGroupMessage(m._id)}
                               disabled={deletingMessageId === m._id}
                               aria-label="Delete message"
@@ -1007,7 +1015,7 @@ export default function GroupChatPage() {
                           )}
                         </div>
                       </div>
-                      <div className={cn('mt-1', mine ? 'text-white' : 'text-slate-900 dark:text-slate-100')}>{m.message}</div>
+                      <div className={cn('mt-1', mine ? 'text-emerald-950 dark:text-slate-50' : 'text-amber-950 dark:text-slate-50')}>{m.message}</div>
                     </div>
                   </div>
 
