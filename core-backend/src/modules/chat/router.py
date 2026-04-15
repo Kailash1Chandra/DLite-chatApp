@@ -7,13 +7,25 @@ from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 
 from src.modules.auth.token import claims_user_id, validate_token
-from src.modules.chat.config import SUPABASE_URL, is_supabase_configured, sb_key
+from src.modules.chat.config import SUPABASE_URL, is_supabase_configured, sb_key, sb_service_role_key
 
 router = APIRouter()
 
 
 def _sb_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     key = sb_key()
+    headers = {
+        "apikey": key,
+        "authorization": f"Bearer {key}",
+    }
+    if extra:
+        headers.update(extra)
+    return headers
+
+
+def _sb_write_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    # Writes should use service role key to avoid RLS blocking server-side operations.
+    key = sb_service_role_key()
     headers = {
         "apikey": key,
         "authorization": f"Bearer {key}",
@@ -113,6 +125,11 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
 
     if not is_supabase_configured():
         return JSONResponse(status_code=503, content={"success": False, "message": "Chat storage is unavailable"})
+    if not sb_service_role_key():
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required for group writes"},
+        )
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         # Find existing group chat by name
@@ -131,11 +148,12 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
             # Create new group chat
             r_create = await client.post(
                 find_url,
-                headers=_sb_headers(),
+                headers=_sb_write_headers({"prefer": "return=representation"}),
                 json={"type": "group", "name": group_key, "created_by": uid},
             )
             if r_create.status_code >= 400:
-                return JSONResponse(status_code=503, content={"success": False, "message": "Could not create group"})
+                msg = r_create.text
+                return JSONResponse(status_code=503, content={"success": False, "message": f"Could not create group ({r_create.status_code}): {msg}"})
             created = r_create.json()
             chat = created[0] if isinstance(created, list) else created
 
@@ -147,7 +165,7 @@ async def ensure_group(req: Request, authorization: Optional[str] = Header(defau
         gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
         r_member = await client.post(
             gm_url,
-            headers=_sb_headers({"prefer": "resolution=merge-duplicates,return=minimal"}),
+            headers=_sb_write_headers({"prefer": "resolution=merge-duplicates,return=minimal"}),
             json={"chat_id": chat_id, "user_id": uid, "role": "owner"},
         )
         # If user already member, supabase returns 409; ignore
@@ -203,6 +221,11 @@ async def add_member_by_username(chat_id: str, req: Request, authorization: Opti
 
     if not is_supabase_configured():
         return JSONResponse(status_code=503, content={"success": False, "message": "Chat storage is unavailable"})
+    if not sb_service_role_key():
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "message": "SUPABASE_SERVICE_ROLE_KEY is required for group writes"},
+        )
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         # Resolve user by username
@@ -218,7 +241,7 @@ async def add_member_by_username(chat_id: str, req: Request, authorization: Opti
         gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
         r_add = await client.post(
             gm_url,
-            headers=_sb_headers({"prefer": "resolution=merge-duplicates,return=minimal"}),
+            headers=_sb_write_headers({"prefer": "resolution=merge-duplicates,return=minimal"}),
             json={"chat_id": chat_id, "user_id": target.get("id"), "role": "member"},
         )
         if r_add.status_code not in (201, 204, 409):

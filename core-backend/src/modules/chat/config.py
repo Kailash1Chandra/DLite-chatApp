@@ -16,3 +16,7 @@ def is_supabase_configured() -> bool:
 def sb_key() -> str:
     return (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY or "").strip()
 
+
+def sb_service_role_key() -> str:
+    return (SUPABASE_SERVICE_ROLE_KEY or "").strip()
+
