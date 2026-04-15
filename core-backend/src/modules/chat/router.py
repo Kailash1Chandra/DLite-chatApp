@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Dict, Optional
 
 import httpx
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
 
-from src.modules.auth.token import validate_token
+from src.modules.auth.token import claims_user_id, validate_token
 from src.modules.chat.config import SUPABASE_URL, is_supabase_configured, sb_key
 
 router = APIRouter()
@@ -22,6 +22,209 @@ def _sb_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
         headers.update(extra)
     return headers
 
+
+async def _require_user(authorization: Optional[str]) -> Optional[dict]:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    return await validate_token(token, supabase_api_key=sb_key() or None)
+
+
+@router.get("/users/search")
+async def search_users(username: str = "", exclude: str = "", authorization: Optional[str] = Header(default=None)):
+    user = await _require_user(authorization)
+    if user is None:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    term = (username or "").strip()
+    if not term:
+        return {"success": True, "users": []}
+
+    if not is_supabase_configured():
+        return {"success": True, "users": []}
+
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/users"
+    params = {
+        "select": "id,username",
+        "username": f"ilike.*{term}*",
+        "order": "username.asc",
+        "limit": "15",
+    }
+    if exclude:
+        params["id"] = f"neq.{exclude}"
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await client.get(url, headers=_sb_headers(), params=params)
+    if r.status_code >= 400:
+        return JSONResponse(status_code=503, content={"success": False, "message": "User search is unavailable"})
+
+    return {"success": True, "users": r.json()}
+
+
+@router.get("/groups/my")
+async def list_my_groups(authorization: Optional[str] = Header(default=None)):
+    user = await _require_user(authorization)
+    if user is None:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+    uid = claims_user_id(user)
+    if not uid:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    if not is_supabase_configured():
+        return {"success": True, "groups": []}
+
+    # Fetch group chats by membership.
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+    params = {
+        "select": "chat_id,chats!inner(id,name,type),role",
+        "user_id": f"eq.{uid}",
+        "chats.type": "eq.group",
+        "limit": "100",
+    }
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        r = await client.get(url, headers=_sb_headers(), params=params)
+    if r.status_code >= 400:
+        return JSONResponse(status_code=503, content={"success": False, "message": "Groups are unavailable"})
+
+    rows = r.json() or []
+    groups = []
+    for row in rows:
+        chat = (row or {}).get("chats") or {}
+        if not chat:
+            continue
+        groups.append({"id": chat.get("id"), "name": chat.get("name") or chat.get("id"), "role": row.get("role")})
+
+    return {"success": True, "groups": groups}
+
+
+@router.post("/groups/ensure")
+async def ensure_group(req: Request, authorization: Optional[str] = Header(default=None)):
+    user = await _require_user(authorization)
+    if user is None:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+    uid = claims_user_id(user)
+    if not uid:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    body = await req.json()
+    group_key = str(body.get("groupKey") or body.get("groupId") or "").strip()
+    if not group_key:
+        return JSONResponse(status_code=400, content={"success": False, "message": "groupKey is required"})
+
+    if not is_supabase_configured():
+        return JSONResponse(status_code=503, content={"success": False, "message": "Chat storage is unavailable"})
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        # Find existing group chat by name
+        find_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/chats"
+        r_find = await client.get(
+            find_url,
+            headers=_sb_headers(),
+            params={"select": "id,name,type", "type": "eq.group", "name": f"eq.{group_key}", "limit": "1"},
+        )
+        if r_find.status_code >= 400:
+            return JSONResponse(status_code=503, content={"success": False, "message": "Chat storage is unavailable"})
+        items = r_find.json() or []
+        chat = items[0] if items else None
+
+        if not chat:
+            # Create new group chat
+            r_create = await client.post(
+                find_url,
+                headers=_sb_headers(),
+                json={"type": "group", "name": group_key, "created_by": uid},
+            )
+            if r_create.status_code >= 400:
+                return JSONResponse(status_code=503, content={"success": False, "message": "Could not create group"})
+            created = r_create.json()
+            chat = created[0] if isinstance(created, list) else created
+
+        chat_id = (chat or {}).get("id")
+        if not chat_id:
+            return JSONResponse(status_code=503, content={"success": False, "message": "Could not open group"})
+
+        # Ensure membership row exists
+        gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+        r_member = await client.post(
+            gm_url,
+            headers=_sb_headers({"prefer": "resolution=merge-duplicates,return=minimal"}),
+            json={"chat_id": chat_id, "user_id": uid, "role": "owner"},
+        )
+        # If user already member, supabase returns 409; ignore
+        if r_member.status_code not in (201, 204, 409):
+            return JSONResponse(status_code=503, content={"success": False, "message": "Could not join group"})
+
+    return {"success": True, "group": {"id": chat_id, "name": (chat or {}).get("name") or group_key}}
+
+
+@router.get("/groups/{chat_id}/members")
+async def list_group_members(chat_id: str, authorization: Optional[str] = Header(default=None)):
+    user = await _require_user(authorization)
+    if user is None:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+    uid = claims_user_id(user)
+    if not uid:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    if not is_supabase_configured():
+        return {"success": True, "members": []}
+
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+    params = {
+        "select": "role,users(id,username)",
+        "chat_id": f"eq.{chat_id}",
+        "order": "joined_at.asc",
+        "limit": "200",
+    }
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        r = await client.get(url, headers=_sb_headers(), params=params)
+    if r.status_code >= 400:
+        return JSONResponse(status_code=503, content={"success": False, "message": "Could not load group members"})
+
+    members = []
+    for row in r.json() or []:
+        u = (row or {}).get("users") or {}
+        if not u:
+            continue
+        members.append({"id": u.get("id"), "username": u.get("username"), "role": row.get("role") or "member"})
+    return {"success": True, "members": members}
+
+
+@router.post("/groups/{chat_id}/members/add-by-username")
+async def add_member_by_username(chat_id: str, req: Request, authorization: Optional[str] = Header(default=None)):
+    user = await _require_user(authorization)
+    if user is None:
+        return JSONResponse(status_code=401, content={"success": False, "message": "Invalid token"})
+
+    body = await req.json()
+    username = str(body.get("username") or "").strip()
+    if not username:
+        return JSONResponse(status_code=400, content={"success": False, "message": "username is required"})
+
+    if not is_supabase_configured():
+        return JSONResponse(status_code=503, content={"success": False, "message": "Chat storage is unavailable"})
+
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        # Resolve user by username
+        u_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/users"
+        r_user = await client.get(u_url, headers=_sb_headers(), params={"select": "id,username", "username": f"eq.{username}", "limit": "1"})
+        if r_user.status_code >= 400:
+            return JSONResponse(status_code=503, content={"success": False, "message": "User lookup failed"})
+        items = r_user.json() or []
+        if not items:
+            return JSONResponse(status_code=404, content={"success": False, "message": "User not found"})
+        target = items[0]
+
+        gm_url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/group_members"
+        r_add = await client.post(
+            gm_url,
+            headers=_sb_headers({"prefer": "resolution=merge-duplicates,return=minimal"}),
+            json={"chat_id": chat_id, "user_id": target.get("id"), "role": "member"},
+        )
+        if r_add.status_code not in (201, 204, 409):
+            return JSONResponse(status_code=503, content={"success": False, "message": "Could not add member"})
+
+    return {"success": True, "member": {"id": target.get("id"), "username": target.get("username"), "role": "member"}}
 
 @router.get("/messages/{chat_id}")
 async def get_messages(chat_id: str, authorization: Optional[str] = Header(default=None)):

@@ -341,10 +341,11 @@ export default function GroupChatPage() {
     setPanelError('');
     setPanelSuccess('');
     try {
-      await ensureGroupMembership({ groupId: normalized, userId: user.id });
-      setGroupId(normalized);
+      const group = await ensureGroupMembership({ groupId: normalized, userId: user.id });
+      const resolvedId = group?.id || normalized;
+      setGroupId(resolvedId);
       setGroupSearchOpen(false);
-      await Promise.all([loadUserGroups(), loadGroupMembers(normalized)]);
+      await Promise.all([loadUserGroups(), loadGroupMembers(resolvedId)]);
     } catch (err) {
       setPanelError(err?.message || 'Could not open group right now.');
     }

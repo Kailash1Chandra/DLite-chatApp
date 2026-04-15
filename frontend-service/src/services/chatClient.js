@@ -1,5 +1,6 @@
 import { io } from 'socket.io-client'
 import { API_BASE_URL, CHAT_SOCKET_URL } from './appClient'
+import { getCurrentAuthSnapshot } from './authClient'
 
 let socketInstance = null
 
@@ -27,7 +28,17 @@ export async function getUserProfileById(userId) {
 }
 
 export async function searchUsersByUsername(_term, _excludeUserId) {
-  return []
+  const term = String(_term || '').trim()
+  if (!term) return []
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) return []
+  const url = new URL(`${API_BASE_URL}/chat/users/search`)
+  url.searchParams.set('username', term)
+  if (_excludeUserId) url.searchParams.set('exclude', String(_excludeUserId))
+  const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${snapshot.token}` } })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) return []
+  return json?.users || []
 }
 
 export async function listDirectMessages() {
@@ -117,18 +128,53 @@ export function subscribeGroupMessages() {
   return () => undefined
 }
 export async function listUserGroups() {
-  return []
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) return []
+  const res = await fetch(`${API_BASE_URL}/chat/groups/my`, { headers: { Authorization: `Bearer ${snapshot.token}` } })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not load groups')
+  return json?.groups || []
 }
 export async function ensureGroupMembership() {
-  return
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const groupKey = String(arguments?.[0]?.groupId || arguments?.[0]?.groupKey || '').trim()
+  if (!groupKey) throw new Error('groupId is required')
+  const res = await fetch(`${API_BASE_URL}/chat/groups/ensure`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+    body: JSON.stringify({ groupKey }),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not open group')
+  return json?.group
 }
 export async function addGroupMemberByUsername() {
-  const error = new Error('Group chat is disabled.')
-  error.code = 'feature/disabled'
-  throw error
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) throw new Error('Not authenticated')
+  const groupId = String(arguments?.[0]?.groupId || '').trim()
+  const username = String(arguments?.[0]?.username || '').trim()
+  if (!groupId || !username) throw new Error('groupId and username are required')
+  const res = await fetch(`${API_BASE_URL}/chat/groups/${encodeURIComponent(groupId)}/members/add-by-username`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${snapshot.token}` },
+    body: JSON.stringify({ username }),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not add member')
+  return json?.member
 }
 export async function listGroupMembers() {
-  return []
+  const snapshot = await getCurrentAuthSnapshot()
+  if (!snapshot?.token) return []
+  const groupId = String(arguments?.[0] || '').trim()
+  if (!groupId) return []
+  const res = await fetch(`${API_BASE_URL}/chat/groups/${encodeURIComponent(groupId)}/members`, {
+    headers: { Authorization: `Bearer ${snapshot.token}` },
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok || json?.success === false) throw new Error(json?.message || 'Could not load members')
+  return json?.members || []
 }
 export async function leaveGroupMembership() {
   return
