@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
@@ -10,7 +11,13 @@ import jwt
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from src.modules.auth.config import AUTH_JWT_SECRET, SUPABASE_ANON_KEY, SUPABASE_URL, is_supabase_configured
+from src.modules.auth.config import (
+    AUTH_JWT_SECRET,
+    SUPABASE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY,
+    SUPABASE_URL,
+    is_supabase_configured,
+)
 from src.utils.env import looks_placeholder
 
 router = APIRouter()
@@ -103,6 +110,32 @@ def _supabase_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     return headers
 
 
+def _supabase_db_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    # For PostgREST access, prefer service role key (bypasses RLS). Fallback to anon if needed.
+    key = (SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY or "").strip()
+    headers = {
+        "apikey": key,
+        "authorization": f"Bearer {key}",
+        "content-type": "application/json",
+        "prefer": "return=representation,resolution=merge-duplicates",
+    }
+    if extra:
+        headers.update(extra)
+    return headers
+
+
+async def _ensure_user_profile_row(*, user_id: str, email: str, username: Optional[str]) -> None:
+    # Keep public.users in sync for chat/user search features.
+    if looks_placeholder(SUPABASE_URL) or looks_placeholder(SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY):
+        return
+    if not user_id or not email or not username:
+        return
+    url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/users"
+    payload = {"id": user_id, "email": email, "username": username}
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        await client.post(url, headers=_supabase_db_headers({"prefer": "resolution=merge-duplicates,return=minimal"}), json=payload)
+
+
 @router.post("/signup")
 async def signup(req: Request):
     body = await req.json()
@@ -121,7 +154,7 @@ async def signup(req: Request):
             return JSONResponse(status_code=409, content={"success": False, "message": "Username already taken"})
 
         user = LocalUser(
-            id=f"local_{int(time.time() * 1000)}",
+            id=str(uuid.uuid4()),
             email=email,
             username=username_norm,
             password_hash=_hash_password(password),
@@ -129,6 +162,11 @@ async def signup(req: Request):
         _local_users_by_email[email] = user
         if username_norm:
             _local_users_by_username[username_norm.lower()] = user
+
+        try:
+            await _ensure_user_profile_row(user_id=user.id, email=user.email, username=user.username)
+        except Exception:
+            pass
 
         auth_data = _issue_local_tokens(user)
         return JSONResponse(
@@ -150,7 +188,7 @@ async def signup(req: Request):
             r = await client.post(url, headers=_supabase_headers(), json=payload)
         except httpx.HTTPError:
             user = LocalUser(
-                id=f"local_{int(time.time() * 1000)}",
+                id=str(uuid.uuid4()),
                 email=email,
                 username=username_norm,
                 password_hash=_hash_password(password),
@@ -158,6 +196,10 @@ async def signup(req: Request):
             _local_users_by_email[email] = user
             if username_norm:
                 _local_users_by_username[username_norm.lower()] = user
+            try:
+                await _ensure_user_profile_row(user_id=user.id, email=user.email, username=user.username)
+            except Exception:
+                pass
             auth_data = _issue_local_tokens(user)
             return JSONResponse(
                 status_code=201,
@@ -177,7 +219,7 @@ async def signup(req: Request):
             if email in _local_users_by_email:
                 return JSONResponse(status_code=409, content={"success": False, "message": "User already registered"})
             user = LocalUser(
-                id=f"local_{int(time.time() * 1000)}",
+                id=str(uuid.uuid4()),
                 email=email,
                 username=username_norm,
                 password_hash=_hash_password(password),
@@ -185,6 +227,10 @@ async def signup(req: Request):
             _local_users_by_email[email] = user
             if username_norm:
                 _local_users_by_username[username_norm.lower()] = user
+            try:
+                await _ensure_user_profile_row(user_id=user.id, email=user.email, username=user.username)
+            except Exception:
+                pass
             auth_data = _issue_local_tokens(user)
             return JSONResponse(
                 status_code=201,

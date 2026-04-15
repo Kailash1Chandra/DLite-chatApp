@@ -27,6 +27,20 @@ export function AuthProvider({ children }) {
   }, [user]);
 
   useEffect(() => {
+    // Persist non-Supabase auth (and also helps restore faster on refresh).
+    try {
+      if (typeof window === 'undefined') return;
+      if (!token || !user) {
+        window.localStorage.removeItem('d_lite_auth_snapshot');
+        return;
+      }
+      window.localStorage.setItem('d_lite_auth_snapshot', JSON.stringify({ token, user }));
+    } catch {
+      // ignore storage failures (private mode, quota, etc.)
+    }
+  }, [token, user]);
+
+  useEffect(() => {
     const unsubscribe = subscribeToAuthState(async (authUser) => {
       try {
         stopPresenceRef.current();

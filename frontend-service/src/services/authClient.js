@@ -66,7 +66,7 @@ export async function registerWithAuth({ username, email, password }) {
   // NOTE: Backend currently doesn’t enforce unique usernames. We return friendly client-side hints.
   // For now we generate suggestions locally if signup fails for any reason.
   try {
-    const data = await requestJson('/auth/signup', { method: 'POST', body: { email, password } })
+    const data = await requestJson('/auth/signup', { method: 'POST', body: { email, password, username: raw } })
     const parsed = parseAuthResponse(data)
     return parsed
   } catch (e) {
@@ -107,7 +107,16 @@ export async function logoutFromAuth() {
 }
 
 export async function getCurrentAuthSnapshot() {
-  if (!supabase) return { token: null, user: null }
+  if (!supabase) {
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem('d_lite_auth_snapshot') : null
+      if (!raw) return { token: null, user: null }
+      const parsed = JSON.parse(raw)
+      return { token: parsed?.token || null, user: parsed?.user || null }
+    } catch {
+      return { token: null, user: null }
+    }
+  }
   const { data } = await supabase.auth.getSession()
   const session = data?.session
   if (!session) return { token: null, user: null }
